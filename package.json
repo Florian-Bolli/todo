@@ -1,0 +1,50 @@
+{
+  "name": "minimal-todo",
+  "version": "2.0.0",
+  "description": "Minimal Todo app with Node.js, SQLite, and vanilla JavaScript",
+  "main": "src/backend/server.js",
+  "scripts": {
+    "start": "node src/backend/server.js",
+    "dev": "nodemon src/backend/server.js",
+    "build": "echo 'No build step required for vanilla JS'",
+    "test": "echo \"No tests\" && exit 0",
+    "clean": "rm -rf node_modules package-lock.json",
+    "setup": "npm install"
+  },
+  "keywords": [
+    "todo",
+    "minimal",
+    "nodejs",
+    "sqlite",
+    "vanilla-js"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.4.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "puppeteer": "^24.22.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "."
+  },
+  "bugs": {
+    "url": "."
+  },
+  "homepage": "."
+}

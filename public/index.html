@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Minimal Todo v2</title>
+    <link rel="manifest" href="/manifest.json?v=2" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <link rel="stylesheet" href="/css/styles.css?v=2" />
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js?v=2"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js?v=2"></script>
+
+    <script type="module" src="/js/api.js?v=2"></script>
+    <script type="module" src="/js/components.js?v=2"></script>
+    <script type="module" src="/js/drag-handler.js?v=2"></script>
+    <script type="module" src="/js/app.js?v=2"></script>
+
+    <script>
+        // Disable service worker for now to prevent caching issues
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                registrations.forEach(registration => {
+                    registration.unregister();
+                });
+            });
+        }
+    </script>
+</body>
+
+</html>

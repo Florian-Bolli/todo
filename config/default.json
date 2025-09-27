@@ -1,0 +1,23 @@
+{
+    "server": {
+        "port": 3000,
+        "host": "localhost"
+    },
+    "database": {
+        "path": "data.db"
+    },
+    "jwt": {
+        "secret": "your-secret-key-change-in-production",
+        "expiresIn": "7d"
+    },
+    "cors": {
+        "origin": "http://localhost:3000",
+        "credentials": true
+    },
+    "cache": {
+        "staticFiles": {
+            "maxAge": 0,
+            "noCache": true
+        }
+    }
+}
