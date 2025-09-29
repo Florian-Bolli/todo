@@ -1,0 +1,137 @@
+name: Deploy ToDo App
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci --production
+      
+    - name: Create deployment package
+      run: |
+        mkdir -p deploy
+        cp -r src deploy/
+        cp -r public deploy/
+        cp -r config deploy/
+        cp package*.json deploy/
+        cp server.js deploy/
+        cp env.example deploy/.env.production
+        
+    - name: Deploy to server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        port: 22
+        script: |
+          # Create app directory if it doesn't exist
+          mkdir -p /opt/todo-app
+          cd /opt/todo-app
+          
+          # Stop existing service
+          sudo systemctl stop todo-app || true
+          
+          # Backup current deployment
+          if [ -d "current" ]; then
+            mv current backup-$(date +%Y%m%d-%H%M%S)
+          fi
+          
+          # Create new deployment directory
+          mkdir -p current
+          
+    - name: Copy files to server
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        port: 22
+        source: "deploy/*"
+        target: "/opt/todo-app/current"
+        
+    - name: Setup and start service
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        port: 22
+        script: |
+          cd /opt/todo-app/current
+          
+          # Install production dependencies
+          npm ci --production
+          
+          # Set proper permissions
+          chmod +x server.js
+          chown -R www-data:www-data /opt/todo-app
+          
+          # Create systemd service file
+          sudo tee /etc/systemd/system/todo-app.service > /dev/null <<EOF
+          [Unit]
+          Description=ToDo App
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=www-data
+          WorkingDirectory=/opt/todo-app/current
+          ExecStart=/usr/bin/node server.js
+          Restart=always
+          RestartSec=10
+          Environment=NODE_ENV=production
+          Environment=PORT=3000
+          Environment=JWT_SECRET=${{ secrets.JWT_SECRET }}
+          Environment=FRONTEND_URL=https://your-domain.com
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          
+          # Reload systemd and start service
+          sudo systemctl daemon-reload
+          sudo systemctl enable todo-app
+          sudo systemctl start todo-app
+          
+          # Setup nginx reverse proxy
+          sudo tee /etc/nginx/sites-available/todo-app > /dev/null <<EOF
+          server {
+              listen 80;
+              server_name your-domain.com;
+              
+              location / {
+                  proxy_pass http://localhost:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade \$http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host \$host;
+                  proxy_set_header X-Real-IP \$remote_addr;
+                  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$scheme;
+                  proxy_cache_bypass \$http_upgrade;
+              }
+          }
+          EOF
+          
+          # Enable nginx site
+          sudo ln -sf /etc/nginx/sites-available/todo-app /etc/nginx/sites-enabled/
+          sudo nginx -t && sudo systemctl reload nginx
+          
+          # Check service status
+          sudo systemctl status todo-app --no-pager
