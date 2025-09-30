@@ -1,7 +1,7 @@
 // Main Todo App Application
 
 import { authAPI, todosAPI, categoriesAPI, getToken, setToken, flushQueue } from './api.js';
-import { Login, TodoItem, FilterControls, TodoInput, Status } from './components.js';
+import { Login, TodoItem, FilterControls, TodoInput, Status, CategoryModal } from './components.js';
 import { DragHandler } from './drag-handler.js';
 import { store } from './store.js';
 
@@ -10,6 +10,9 @@ class TodoApp {
         this.dragHandler = new DragHandler((fromIndex, toIndex) => {
             this.handleReorder(fromIndex, toIndex);
         });
+
+        // Category modal state
+        this.categoryModalOpen = false;
 
         // Subscribe to store changes
         this.unsubscribe = store.subscribe((state) => {
@@ -104,7 +107,8 @@ class TodoApp {
             selectedCategories: state.selectedCategories,
             onToggleCategory: this.handleToggleCategory.bind(this),
             onSelectAll: this.handleSelectAllCategories.bind(this),
-            onSelectOnly: this.handleSelectOnlyCategory.bind(this)
+            onSelectOnly: this.handleSelectOnlyCategory.bind(this),
+            onManageCategories: this.handleManageCategories.bind(this)
         });
         container.appendChild(filterControls);
 
@@ -118,6 +122,17 @@ class TodoApp {
         const status = Status({ message: 'Loading...' });
         status.id = 'status';
         container.appendChild(status);
+
+        // Add category modal
+        const categoryModal = CategoryModal({
+            isOpen: this.categoryModalOpen,
+            categories: state.categories,
+            onClose: this.handleCloseCategoryModal.bind(this),
+            onAddCategory: this.handleAddCategory.bind(this),
+            onDeleteCategory: this.handleDeleteCategory.bind(this),
+            onRenameCategory: this.handleRenameCategory.bind(this)
+        });
+        container.appendChild(categoryModal);
     }
 
     async handleLogin(email, password, isRegister = false) {
@@ -451,6 +466,50 @@ class TodoApp {
 
     handleSelectOnlyCategory(categoryId) {
         store.actions.selectOnlyCategory(categoryId);
+    }
+
+    // Category modal handlers
+    handleManageCategories() {
+        this.categoryModalOpen = true;
+        this.render();
+    }
+
+    handleCloseCategoryModal() {
+        this.categoryModalOpen = false;
+        this.render();
+    }
+
+    async handleAddCategory(name) {
+        try {
+            await store.actions.createCategory({ name });
+        } catch (error) {
+            console.error('Failed to add category:', error);
+        }
+    }
+
+    async handleDeleteCategory(categoryId) {
+        try {
+            await categoriesAPI.delete(categoryId);
+            const categories = store.getState().categories.filter(cat => cat.id !== categoryId);
+            store.actions.setCategories(categories);
+        } catch (error) {
+            console.error('Failed to delete category:', error);
+        }
+    }
+
+    async handleRenameCategory(oldName, newName) {
+        try {
+            const category = store.getState().categories.find(cat => cat.name === oldName);
+            if (category) {
+                await categoriesAPI.update(category.id, { name: newName });
+                const categories = store.getState().categories.map(cat => 
+                    cat.id === category.id ? { ...cat, name: newName } : cat
+                );
+                store.actions.setCategories(categories);
+            }
+        } catch (error) {
+            console.error('Failed to rename category:', error);
+        }
     }
 
     async handleReorder(fromIndex, toIndex) {

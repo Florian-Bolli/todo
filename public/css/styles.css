@@ -236,6 +236,35 @@ body {
     transform: translateY(0);
 }
 
+/* Manage Categories Button */
+.manage-categories-section {
+    margin: 10px 0;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.manage-categories-btn {
+    padding: 8px 16px;
+    background: #6b7280;
+    color: white;
+    border: 1px solid #6b7280;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.manage-categories-btn:hover {
+    background: #4b5563;
+    border-color: #4b5563;
+    transform: translateY(-1px);
+}
+
+.manage-categories-btn:active {
+    transform: translateY(0);
+}
+
 /* Todo List */
 .todo-list {
     display: flex;

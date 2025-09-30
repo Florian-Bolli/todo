@@ -347,7 +347,7 @@ export function CategoryFilter({ categories, selectedCategories, onToggleCategor
 }
 
 // Filter Controls Component
-export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAgeChange, categories, selectedCategories, onToggleCategory, onSelectAll, onSelectOnly }) {
+export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAgeChange, categories, selectedCategories, onToggleCategory, onSelectAll, onSelectOnly, onManageCategories }) {
     const container = e('div', { className: 'filter-controls' },
         e('div', { className: 'filter-buttons' },
             e('button', {
@@ -375,6 +375,14 @@ export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAg
             onSelectAll, 
             onSelectOnly 
         }),
+        // Manage categories button
+        e('div', { className: 'manage-categories-section' },
+            e('button', {
+                className: 'manage-categories-btn',
+                onClick: onManageCategories,
+                title: 'Manage categories'
+            }, 'Manage Categories')
+        ),
         e('div', { className: 'age-filter' },
             e('label', { for: 'age-filter' }, 'Show done items from last:'),
             e('select', {
