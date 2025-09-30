@@ -71,7 +71,18 @@ async function apiRequest(endpoint, options = {}) {
                 setToken('');
                 throw new Error('Unauthorized');
             }
-            throw new Error(`HTTP ${response.status}`);
+            // Try to get error message from response
+            let errorMessage = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) {
+                    errorMessage = errorData.error;
+                }
+            } catch (e) {
+                // If response is not JSON, use status text
+                errorMessage = response.statusText || `HTTP ${response.status}`;
+            }
+            throw new Error(errorMessage);
         }
 
         // Handle 204 No Content responses (like DELETE)

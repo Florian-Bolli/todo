@@ -10,6 +10,9 @@ echo "🔧 Setting up server for ToDo App deployment..."
 # Update system
 apt update && apt upgrade -y
 
+# Install build tools first
+apt install -y build-essential python3 make g++
+
 # Install Node.js 18
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 apt-get install -y nodejs

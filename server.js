@@ -239,6 +239,65 @@ app.get('/api/categories', authMiddleware, (req, res) => {
     res.json(result);
 });
 
+// Create a new category (by creating a todo with that category)
+app.post('/api/categories', authMiddleware, (req, res) => {
+    const { name } = req.body || {};
+    if (!name || !name.trim()) return res.status(400).json({ error: 'category name required' });
+
+    const categoryName = name.trim();
+
+    // Check if category already exists
+    const existing = db.prepare('SELECT DISTINCT category FROM todo_items WHERE account_id = ? AND category = ?').get(req.user.id, categoryName);
+    if (existing) return res.status(409).json({ error: 'category already exists' });
+
+    // Create a placeholder todo with this category to establish the category
+    const maxOrderRow = db.prepare('SELECT COALESCE(MAX(sort_order), -1) as max_order FROM todo_items WHERE account_id = ?').get(req.user.id);
+    const sort_order = (maxOrderRow?.max_order ?? -1) + 1;
+
+    const info = db.prepare('INSERT INTO todo_items (account_id, name, group_name, sort_order, priority, done, category) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(req.user.id, `Category: ${categoryName}`, 'categories', sort_order, 0, 1, categoryName);
+
+    // Delete the placeholder todo immediately
+    db.prepare('DELETE FROM todo_items WHERE id = ?').run(info.lastInsertRowid);
+
+    res.status(201).json({ name: categoryName });
+});
+
+// Rename a category
+app.put('/api/categories/:oldName', authMiddleware, (req, res) => {
+    const { oldName } = req.params;
+    const { newName } = req.body || {};
+
+    if (!newName || !newName.trim()) return res.status(400).json({ error: 'new category name required' });
+
+    const newCategoryName = newName.trim();
+
+    // Check if new category already exists
+    const existing = db.prepare('SELECT DISTINCT category FROM todo_items WHERE account_id = ? AND category = ?').get(req.user.id, newCategoryName);
+    if (existing) return res.status(409).json({ error: 'category already exists' });
+
+    // Update all todos with the old category name
+    const result = db.prepare('UPDATE todo_items SET category = ?, last_changed = datetime(\'now\') WHERE account_id = ? AND category = ?')
+        .run(newCategoryName, req.user.id, oldName);
+
+    if (result.changes === 0) return res.status(404).json({ error: 'category not found' });
+
+    res.json({ oldName, newName: newCategoryName, updatedCount: result.changes });
+});
+
+// Delete a category
+app.delete('/api/categories/:name', authMiddleware, (req, res) => {
+    const { name } = req.params;
+
+    // Remove category from all todos (set to empty string)
+    const result = db.prepare('UPDATE todo_items SET category = \'\', last_changed = datetime(\'now\') WHERE account_id = ? AND category = ?')
+        .run(req.user.id, name);
+
+    if (result.changes === 0) return res.status(404).json({ error: 'category not found' });
+
+    res.json({ name, removedCount: result.changes });
+});
+
 // Reorder endpoint: accepts array of ids in desired order
 app.post('/api/todos/reorder', authMiddleware, (req, res) => {
     const { order } = req.body || {};

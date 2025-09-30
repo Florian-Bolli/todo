@@ -29,7 +29,29 @@ cp -r public deploy/
 cp -r config deploy/
 cp package*.json deploy/
 cp server.js deploy/
-cp .env.production deploy/.env
+# Create production env file
+cat > deploy/.env << 'ENV_EOF'
+# Production Environment Configuration for Todo App
+
+# Server Configuration
+PORT=3000
+NODE_ENV=production
+
+# JWT Configuration - CHANGE THIS IN PRODUCTION!
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+
+# Database Configuration
+DATABASE_PATH=/opt/todo-app/data/data.db
+
+# CORS Configuration - Update with your actual domain
+FRONTEND_URL=https://your-domain.com
+
+# Cache Configuration
+CACHE_CONTROL=no-cache
+
+# Security
+BCRYPT_ROUNDS=12
+ENV_EOF
 
 # Create deployment archive
 tar -czf todo-app-deploy.tar.gz -C deploy .

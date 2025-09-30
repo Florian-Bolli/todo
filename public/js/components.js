@@ -97,7 +97,7 @@ export function Login({ onLogin }) {
 }
 
 // Todo Item Component
-export function TodoItem({ todo, index, isEditing, isExpanded, onToggle, onEdit, onUpdate, onFieldUpdate, onCancel, onToggleExpanded, onDelete, onDragStart, onDragEnter, onDragOver, onDragLeave, onDrop, onDragEnd, onTouchStart, onTouchMove, onTouchEnd }) {
+export function TodoItem({ todo, index, isEditing, isExpanded, categories, onToggle, onEdit, onUpdate, onFieldUpdate, onCancel, onToggleExpanded, onDelete, onDragStart, onDragEnter, onDragOver, onDragLeave, onDrop, onDragEnd, onTouchStart, onTouchMove, onTouchEnd }) {
     const container = e('div', {
         className: `todo ${todo.done ? 'done' : ''} ${isEditing ? 'editing' : ''} ${isExpanded ? 'expanded' : 'collapsed'}`,
         'data-todo-id': todo.id,
@@ -122,40 +122,48 @@ export function TodoItem({ todo, index, isEditing, isExpanded, onToggle, onEdit,
                 checked: !!todo.done,
                 onChange: () => onToggle(todo)
             }),
-            isEditing ?
-                e('input', {
-                    className: 'name-edit-input',
-                    value: todo.name,
-                    onKeyDown: (ev) => {
-                        if (ev.key === 'Enter') {
-                            ev.preventDefault();
-                            onUpdate(todo, ev.target.value);
-                        }
-                        if (ev.key === 'Escape') {
-                            ev.target.value = todo.name;
-                            ev.target.blur();
-                        }
-                    },
-                    onBlur: (ev) => {
-                        if (ev.target.value.trim() && ev.target.value !== todo.name) {
-                            onUpdate(todo, ev.target.value.trim());
-                        } else {
-                            ev.target.value = todo.name;
-                        }
-                    },
-                    onClick: (ev) => ev.stopPropagation(),
-                    onFocus: (ev) => {
-                        // Select all text when the input gets focus
-                        ev.target.select();
-                    }
-                }) :
-                e('span', {
-                    className: 'name',
-                    onClick: (e) => {
+            e('div', {
+                className: 'name-container',
+                onClick: (e) => {
+                    // Only expand if clicking in the container but not on the name text itself
+                    if (!e.target.classList.contains('name')) {
                         e.stopPropagation();
-                        onEdit(todo);
+                        onToggleExpanded(todo);
                     }
-                }, todo.name),
+                }
+            },
+                isEditing ?
+                    e('input', {
+                        className: 'name-edit-input',
+                        value: todo.name,
+                        onKeyDown: (ev) => {
+                            if (ev.key === 'Enter') {
+                                ev.preventDefault();
+                                onUpdate(todo, ev.target.value);
+                            }
+                            if (ev.key === 'Escape') {
+                                ev.target.value = todo.name;
+                                ev.target.blur();
+                            }
+                        },
+                        onBlur: (ev) => {
+                            // Cancel editing on blur - don't save changes
+                            onCancel(todo);
+                        },
+                        onClick: (ev) => ev.stopPropagation(),
+                        onFocus: (ev) => {
+                            // Select all text when the input gets focus
+                            ev.target.select();
+                        }
+                    }) :
+                    e('span', {
+                        className: 'name',
+                        onClick: (e) => {
+                            e.stopPropagation();
+                            onEdit(todo);
+                        }
+                    }, todo.name)
+            ),
             e('button', {
                 className: 'expand-icon',
                 onClick: (e) => {
@@ -191,18 +199,44 @@ export function TodoItem({ todo, index, isEditing, isExpanded, onToggle, onEdit,
                     e('div', { className: 'field-row' },
                         e('div', { className: 'field-group' },
                             e('label', { className: 'field-label' }, 'Category'),
-                            e('input', {
-                                type: 'text',
-                                className: 'field-input',
-                                placeholder: 'Enter category...',
-                                value: todo.category || '',
-                                onBlur: (ev) => {
-                                    if (ev.target.value !== (todo.category || '')) {
-                                        onFieldUpdate(todo, 'category', ev.target.value);
+                            e('select', {
+                                className: 'field-select',
+                                value: todo.category_id || '',
+                                disabled: !categories || categories.length === 0,
+                                onChange: (ev) => {
+                                    const value = ev.target.value;
+                                    const cleanValue = value === '' ? null : parseInt(value);
+
+                                    // If categories array is empty, don't proceed
+                                    if (!categories || categories.length === 0) {
+                                        return;
+                                    }
+
+                                    // Validate that the selected category actually exists
+                                    if (cleanValue !== null) {
+                                        const categoryExists = categories.some(cat => cat.id === cleanValue);
+                                        if (!categoryExists) {
+                                            return; // Don't update if category doesn't exist
+                                        }
+                                    }
+
+                                    if (cleanValue !== (todo.category_id || null)) {
+                                        onFieldUpdate(todo, 'category_id', cleanValue);
                                     }
                                 },
                                 onClick: (ev) => ev.stopPropagation()
-                            })
+                            },
+                                e('option', { value: '' }, 'No Category'),
+                                ...(categories || []).filter(category => {
+                                    // Only render categories with valid IDs
+                                    const categoryObj = typeof category === 'string' ? { id: category, name: category } : category;
+                                    return categoryObj && categoryObj.id && typeof categoryObj.id === 'number';
+                                }).map(category => {
+                                    // Handle both old format (string) and new format (object)
+                                    const categoryObj = typeof category === 'string' ? { id: category, name: category } : category;
+                                    return e('option', { key: categoryObj.id, value: categoryObj.id }, categoryObj.name);
+                                })
+                            )
                         ),
                         e('div', { className: 'field-group' },
                             e('label', { className: 'field-label' }, 'Parent Task ID'),
@@ -335,6 +369,167 @@ export function TodoInput({ onAdd }) {
     return container;
 }
 
+
+// Category Management Modal Component
+export function CategoryModal({ isOpen, categories, onClose, onAddCategory, onDeleteCategory, onRenameCategory }) {
+    if (!isOpen) return null;
+
+    // Create a unique ID for this modal instance to manage state
+    const modalId = 'category-modal-' + Date.now();
+
+    // State management for modal - store in a global object
+    if (!window.categoryModalState) {
+        window.categoryModalState = {};
+    }
+
+    const state = window.categoryModalState[modalId] = window.categoryModalState[modalId] || {
+        newCategoryName: '',
+        editingCategory: null,
+        editName: ''
+    };
+
+    const handleAddCategory = () => {
+        const newName = state.newCategoryName.trim();
+        if (newName && !categories.some(cat => {
+            const catName = typeof cat === 'string' ? cat : cat.name;
+            return catName === newName;
+        })) {
+            onAddCategory(newName);
+            state.newCategoryName = '';
+        }
+    };
+
+    const handleStartEdit = (category) => {
+        state.editingCategory = category;
+        state.editName = category.name;
+    };
+
+    const handleSaveEdit = () => {
+        const newName = state.editName.trim();
+        const oldName = state.editingCategory.name;
+        if (newName && newName !== oldName && !categories.some(cat => {
+            const catName = typeof cat === 'string' ? cat : cat.name;
+            return catName === newName;
+        })) {
+            onRenameCategory(oldName, newName);
+        }
+        state.editingCategory = null;
+        state.editName = '';
+    };
+
+    const handleCancelEdit = () => {
+        state.editingCategory = null;
+        state.editName = '';
+    };
+
+    const handleClose = () => {
+        // Clean up state when modal closes
+        if (window.categoryModalState && window.categoryModalState[modalId]) {
+            delete window.categoryModalState[modalId];
+        }
+        onClose();
+    };
+
+    const container = e('div', { className: 'modal-overlay', onClick: handleClose },
+        e('div', { className: 'modal-content', onClick: (e) => e.stopPropagation() },
+            e('div', { className: 'modal-header' },
+                e('h3', {}, 'Manage Categories'),
+                e('button', { className: 'modal-close', onClick: handleClose }, '×')
+            ),
+            e('div', { className: 'modal-body' },
+                e('div', { className: 'add-category-section' },
+                    e('h4', {}, 'Add New Category'),
+                    e('div', { className: 'add-category-form' },
+                        e('input', {
+                            type: 'text',
+                            placeholder: 'Enter category name...',
+                            value: state.newCategoryName,
+                            onKeyDown: (e) => {
+                                if (e.key === 'Enter') {
+                                    state.newCategoryName = e.target.value;
+                                    handleAddCategory();
+                                }
+                            },
+                            onInput: (e) => {
+                                state.newCategoryName = e.target.value;
+                            }
+                        }),
+                        e('button', {
+                            className: 'btn btn-primary',
+                            onClick: (e) => {
+                                const input = e.target.previousElementSibling;
+                                state.newCategoryName = input.value;
+                                handleAddCategory();
+                            }
+                        }, 'Add Category')
+                    )
+                ),
+                e('div', { className: 'existing-categories-section' },
+                    e('h4', {}, 'Existing Categories'),
+                    e('div', { className: 'categories-list' },
+                        ...categories.map(category => {
+                            // Handle both old format (string) and new format (object)
+                            const categoryObj = typeof category === 'string' ? { id: category, name: category } : category;
+                            return e('div', { key: categoryObj.id, className: 'category-item' },
+                                state.editingCategory && state.editingCategory.id === categoryObj.id ? (
+                                    e('div', { className: 'category-edit-form' },
+                                        e('input', {
+                                            type: 'text',
+                                            value: state.editName,
+                                            onKeyDown: (e) => {
+                                                if (e.key === 'Enter') {
+                                                    state.editName = e.target.value;
+                                                    handleSaveEdit();
+                                                } else if (e.key === 'Escape') {
+                                                    handleCancelEdit();
+                                                }
+                                            },
+                                            onInput: (e) => {
+                                                state.editName = e.target.value;
+                                            }
+                                        }),
+                                        e('button', {
+                                            className: 'btn btn-small btn-primary',
+                                            onClick: (e) => {
+                                                const input = e.target.previousElementSibling;
+                                                state.editName = input.value;
+                                                handleSaveEdit();
+                                            }
+                                        }, 'Save'),
+                                        e('button', {
+                                            className: 'btn btn-small btn-secondary',
+                                            onClick: handleCancelEdit
+                                        }, 'Cancel')
+                                    )
+                                ) : (
+                                    e('div', { className: 'category-display' },
+                                        e('span', { className: 'category-name' }, categoryObj.name),
+                                        e('div', { className: 'category-actions' },
+                                            e('button', {
+                                                className: 'btn btn-small btn-secondary',
+                                                onClick: () => handleStartEdit(categoryObj)
+                                            }, 'Rename'),
+                                            e('button', {
+                                                className: 'btn btn-small btn-danger',
+                                                onClick: () => {
+                                                    if (confirm(`Are you sure you want to delete the category "${categoryObj.name}"? This will remove the category from all todos.`)) {
+                                                        onDeleteCategory(categoryObj.name);
+                                                    }
+                                                }
+                                            }, 'Delete')
+                                        )
+                                    )
+                                )
+                            );
+                        })
+                    )
+                )
+            )
+        )
+    );
+
+    return container;
+}
 
 // Status Component
 export function Status({ message }) {

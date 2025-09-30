@@ -1,4 +1,4 @@
-/* Minimal Todo App - Main Styles */
+  /* Minimal Todo App - Main Styles */
 
 * {
     margin: 0;
@@ -325,7 +325,7 @@ body {
 }
 
 .name {
-    flex: 1;
+    flex: 0 0 auto;
     cursor: pointer;
     transition: color 0.2s ease;
     border-radius: 4px;
@@ -339,7 +339,7 @@ body {
 }
 
 .name-edit-input {
-    flex: 1;
+    flex: 0 0 auto;
     background: #374151;
     border: 1px solid #3b82f6;
     border-radius: 4px;
@@ -349,6 +349,7 @@ body {
     padding: 2px 6px;
     margin: -2px -6px;
     outline: none;
+    min-width: 200px;
 }
 
 .name-edit-input:focus {
@@ -492,6 +493,12 @@ input[type="checkbox"] {
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
+    gap: 15px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
     gap: 15px;
 }
 
@@ -988,5 +995,225 @@ button {
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
         touch-action: none;
         /* Only disable touch action when actually dragging */
+    }
+}
+
+/* Button size variations */
+.btn-small {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+}
+
+.btn-primary {
+    background: #3b82f6;
+}
+
+.btn-primary:hover {
+    background: #2563eb;
+}
+
+.btn-danger {
+    background: #dc2626;
+}
+
+.btn-danger:hover {
+    background: #b91c1c;
+}
+
+/* Category Management Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.modal-content {
+    background: #111827;
+    border-radius: 12px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+    border: 1px solid #1f2937;
+    width: 100%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #1f2937;
+    background: #0f172a;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #e5e7eb;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close:hover {
+    color: #e5e7eb;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.add-category-section,
+.existing-categories-section {
+    margin-bottom: 32px;
+}
+
+.add-category-section h4,
+.existing-categories-section h4 {
+    margin: 0 0 16px 0;
+    color: #d1d5db;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.add-category-form {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.add-category-form input {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid #4b5563;
+    border-radius: 8px;
+    background: #374151;
+    color: #e5e5e5;
+    font-size: 14px;
+}
+
+.add-category-form input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.categories-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.category-item {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.2s ease;
+}
+
+.category-item:hover {
+    border-color: #4b5563;
+    background: #374151;
+}
+
+.category-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.category-name {
+    color: #e5e7eb;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.category-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.category-edit-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.category-edit-form input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    background: #374151;
+    color: #e5e5e5;
+    font-size: 14px;
+}
+
+.category-edit-form input:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Mobile responsive modal */
+@media (max-width: 640px) {
+    .modal-overlay {
+        padding: 10px;
+    }
+
+    .modal-content {
+        max-height: 90vh;
+    }
+
+    .modal-header,
+    .modal-body {
+        padding: 16px;
+    }
+
+    .add-category-form {
+        flex-direction: column;
+    }
+
+    .category-edit-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .category-actions {
+        justify-content: center;
+    }
+
+    .header-actions {
+        flex-direction: column;
+        gap: 8px;
     }
 }

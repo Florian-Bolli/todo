@@ -1,185 +1,21 @@
-// Main Express server for Todo App
-
+// Simple Database Admin Interface
 import express from 'express';
-import cors from 'cors';
-import cookieParser from 'cookie-parser';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
-// Import route handlers
-import authRoutes from './routes/auth.js';
-import todoRoutes from './routes/todos.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-
-// Set JWT_SECRET on app for routes to access
-app.set('JWT_SECRET', JWT_SECRET);
-
-// Database setup
+const PORT = 8083;
 const db = new Database('data.db');
 
-// Create tables
-db.exec(`
-    CREATE TABLE IF NOT EXISTS accounts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        salt TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        account_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (account_id) REFERENCES accounts (id),
-        UNIQUE(account_id, name)
-    );
-    
-    CREATE TABLE IF NOT EXISTS todo_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        account_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        group_name TEXT DEFAULT 'default',
-        sort_order INTEGER DEFAULT 0,
-        priority INTEGER DEFAULT 1,
-        done BOOLEAN DEFAULT 0,
-        notes TEXT DEFAULT '',
-        parent_node_id INTEGER DEFAULT NULL,
-        category_id INTEGER DEFAULT NULL,
-        category TEXT DEFAULT '',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        last_changed DATETIME DEFAULT CURRENT_TIMESTAMP,
-        done_at DATETIME,
-        FOREIGN KEY (account_id) REFERENCES accounts (id),
-        FOREIGN KEY (parent_node_id) REFERENCES todo_items (id),
-        FOREIGN KEY (category_id) REFERENCES categories (id)
-    );
-`);
-
-// Add new columns to existing table if they don't exist
-try {
-    db.exec(`ALTER TABLE todo_items ADD COLUMN last_changed DATETIME DEFAULT CURRENT_TIMESTAMP;`);
-} catch (e) {
-    // Column already exists, ignore
-}
-
-try {
-    db.exec(`ALTER TABLE todo_items ADD COLUMN category_id INTEGER DEFAULT NULL;`);
-} catch (e) {
-    // Column already exists, ignore
-}
-
-try {
-    db.exec(`ALTER TABLE todo_items ADD COLUMN done_at DATETIME;`);
-} catch (e) {
-    // Column already exists, ignore
-}
-
-try {
-    db.exec(`ALTER TABLE todo_items ADD COLUMN notes TEXT DEFAULT '';`);
-} catch (e) {
-    // Column already exists, ignore
-}
-
-try {
-    db.exec(`ALTER TABLE todo_items ADD COLUMN parent_node_id INTEGER DEFAULT NULL;`);
-} catch (e) {
-    // Column already exists, ignore
-}
-
-try {
-    db.exec(`ALTER TABLE todo_items ADD COLUMN category TEXT DEFAULT '';`);
-} catch (e) {
-    // Column already exists, ignore
-}
-
-// Middleware
-app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true
-}));
 app.use(express.json());
-app.use(cookieParser());
+app.use(express.static('public'));
 
-// Auth middleware
-const authMiddleware = (req, res, next) => {
-    const token = req.headers.authorization?.replace('Bearer ', '') || req.cookies.token;
-
-    if (!token) {
-        return res.status(401).json({ error: 'Missing token' });
-    }
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        console.log('Auth middleware - decoded user:', decoded);
-        req.user = decoded;
-        next();
-    } catch (error) {
-        console.log('Auth middleware - token verification failed:', error.message);
-        return res.status(401).json({ error: 'Invalid token' });
-    }
-};
-
-// Make db and authMiddleware available to routes
-app.use((req, res, next) => {
-    req.db = db;
-    req.authMiddleware = authMiddleware;
-    next();
-});
-
-// API Routes
-console.log('Registering API routes...');
-
-// Apply auth middleware to all API routes except auth routes
-app.use('/api', (req, res, next) => {
-    // Skip auth middleware for auth routes (login, register, logout)
-    if (req.path.startsWith('/auth') || req.path === '/login' || req.path === '/register' || req.path === '/logout') {
-        return next();
-    }
-    authMiddleware(req, res, next);
-});
-
-app.use('/api', authRoutes);
-app.use('/api', todoRoutes);
-console.log('API routes registered.');
-
-// Static file serving with cache control (only for non-API routes)
-app.use((req, res, next) => {
-    if (req.path.startsWith('/api')) {
-        return next(); // Skip static file serving for API routes
-    }
-    express.static(path.join(__dirname, '../../public'), {
-        setHeaders: (res, path) => {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.setHeader('Pragma', 'no-cache');
-            res.setHeader('Expires', '0');
-        }
-    })(req, res, next);
-});
-
-// Catch-all handler for SPA (only for non-API routes)
-app.use((req, res, next) => {
-    console.log('Catch-all handler hit:', req.path);
-    // Don't serve HTML for API routes
-    if (req.path.startsWith('/api')) {
-        console.log('API route not found:', req.path);
-        return res.status(404).json({ error: 'API endpoint not found' });
-    }
-    res.sendFile(path.join(__dirname, '../../public/index.html'));
-});
-
-// Database Admin Route (simple interface)
-app.get('/db-admin', (req, res) => {
+// Serve the admin interface
+app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
 <html lang="en">
@@ -230,6 +66,11 @@ app.get('/db-admin', (req, res) => {
         </div>
 
         <div class="section">
+            <h2>📊 Database Statistics</h2>
+            <div id="stats-content">Loading...</div>
+        </div>
+
+        <div class="section">
             <h2>👥 Accounts</h2>
             <div id="accounts-content">Loading...</div>
         </div>
@@ -257,24 +98,24 @@ app.get('/db-admin', (req, res) => {
         async function loadData() {
             try {
                 // Load stats
-                const statsResponse = await fetch('/api/db-stats');
+                const statsResponse = await fetch('/api/stats');
                 const stats = await statsResponse.json();
                 document.getElementById('total-accounts').textContent = stats.accounts;
                 document.getElementById('total-todos').textContent = stats.todos;
                 document.getElementById('total-categories').textContent = stats.categories;
 
                 // Load accounts
-                const accountsResponse = await fetch('/api/db-accounts');
+                const accountsResponse = await fetch('/api/accounts');
                 const accounts = await accountsResponse.json();
                 document.getElementById('accounts-content').innerHTML = createTable(accounts, ['id', 'email', 'created_at']);
 
                 // Load todos
-                const todosResponse = await fetch('/api/db-todos');
+                const todosResponse = await fetch('/api/todos');
                 const todos = await todosResponse.json();
                 document.getElementById('todos-content').innerHTML = createTable(todos, ['id', 'name', 'done', 'category', 'created_at']);
 
                 // Load categories
-                const categoriesResponse = await fetch('/api/db-categories');
+                const categoriesResponse = await fetch('/api/categories');
                 const categories = await categoriesResponse.json();
                 document.getElementById('categories-content').innerHTML = createTable(categories, ['id', 'name', 'account_id']);
 
@@ -288,7 +129,7 @@ app.get('/db-admin', (req, res) => {
             
             let html = '<table><thead><tr>';
             columns.forEach(col => {
-                html += '<th>' + col + '</th>';
+                html += `<th>${col}</th>`;
             });
             html += '</tr></thead><tbody>';
             
@@ -296,7 +137,7 @@ app.get('/db-admin', (req, res) => {
                 html += '<tr>';
                 columns.forEach(col => {
                     const value = row[col];
-                    html += '<td>' + (value !== null && value !== undefined ? value : '-') + '</td>';
+                    html += `<td>${value !== null && value !== undefined ? value : '-'}</td>`;
                 });
                 html += '</tr>';
             });
@@ -310,7 +151,7 @@ app.get('/db-admin', (req, res) => {
             const resultDiv = document.getElementById('query-result');
             
             try {
-                const response = await fetch('/api/db-query', {
+                const response = await fetch('/api/query', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
@@ -319,12 +160,12 @@ app.get('/db-admin', (req, res) => {
                 const result = await response.json();
                 
                 if (result.error) {
-                    resultDiv.innerHTML = '<div class="error">Error: ' + result.error + '</div>';
+                    resultDiv.innerHTML = `<div class="error">Error: ${result.error}</div>`;
                 } else {
-                    resultDiv.innerHTML = '<div class="success">Query executed successfully!</div>' + createTable(result.data, Object.keys(result.data[0] || {}));
+                    resultDiv.innerHTML = `<div class="success">Query executed successfully!</div>` + createTable(result.data, Object.keys(result.data[0] || {}));
                 }
             } catch (error) {
-                resultDiv.innerHTML = '<div class="error">Error: ' + error.message + '</div>';
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
             }
         }
 
@@ -336,8 +177,8 @@ app.get('/db-admin', (req, res) => {
     `);
 });
 
-// Database Admin API endpoints
-app.get('/api/db-stats', (req, res) => {
+// API endpoints
+app.get('/api/stats', (req, res) => {
     try {
         const accounts = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
         const todos = db.prepare('SELECT COUNT(*) as count FROM todo_items').get().count;
@@ -349,7 +190,7 @@ app.get('/api/db-stats', (req, res) => {
     }
 });
 
-app.get('/api/db-accounts', (req, res) => {
+app.get('/api/accounts', (req, res) => {
     try {
         const accounts = db.prepare('SELECT id, email, created_at FROM accounts ORDER BY created_at DESC LIMIT 20').all();
         res.json(accounts);
@@ -358,7 +199,7 @@ app.get('/api/db-accounts', (req, res) => {
     }
 });
 
-app.get('/api/db-todos', (req, res) => {
+app.get('/api/todos', (req, res) => {
     try {
         const todos = db.prepare(`
             SELECT t.id, t.name, t.done, c.name as category, t.created_at
@@ -372,7 +213,7 @@ app.get('/api/db-todos', (req, res) => {
     }
 });
 
-app.get('/api/db-categories', (req, res) => {
+app.get('/api/categories', (req, res) => {
     try {
         const categories = db.prepare('SELECT id, name, account_id FROM categories ORDER BY name').all();
         res.json(categories);
@@ -381,7 +222,7 @@ app.get('/api/db-categories', (req, res) => {
     }
 });
 
-app.post('/api/db-query', (req, res) => {
+app.post('/api/query', (req, res) => {
     try {
         const { query } = req.body;
         
@@ -397,15 +238,14 @@ app.post('/api/db-query', (req, res) => {
     }
 });
 
-// Error handling
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// Start server
 app.listen(PORT, () => {
-    console.log(`Server listening on http://localhost:${PORT}`);
+    console.log(`🗄️  Database Admin Interface running at http://localhost:${PORT}`);
+    console.log(`📊 View your Todo app database in the browser!`);
 });
 
-export { db, JWT_SECRET };
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\n🛑 Shutting down database admin...');
+    db.close();
+    process.exit(0);
+});

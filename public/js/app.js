@@ -24,9 +24,11 @@ class TodoApp {
         const token = getToken();
         if (token) {
             try {
+                // Test the token by making a simple API call
                 await todosAPI.getAll();
                 this.showTodoApp();
             } catch (error) {
+                console.log('Token validation failed:', error.message);
                 setToken('');
                 this.showLogin();
             }
@@ -126,8 +128,12 @@ class TodoApp {
             if (status) status.textContent = 'Loading...';
 
             console.log('Loading todos and categories...');
-            this.todos = await todosAPI.getAll();
-            this.categories = await categoriesAPI.getAll();
+            const todosResponse = await todosAPI.getAll();
+            const categoriesResponse = await categoriesAPI.getAll();
+
+            // Handle the response structure from the backend
+            this.todos = Array.isArray(todosResponse) ? todosResponse : todosResponse.todos || [];
+            this.categories = Array.isArray(categoriesResponse) ? categoriesResponse : categoriesResponse.categories || [];
 
             console.log('Loaded todos:', this.todos);
             console.log('Loaded categories:', this.categories);
