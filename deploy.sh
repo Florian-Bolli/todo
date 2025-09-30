@@ -117,9 +117,10 @@ SERVICE_EOF
     systemctl enable $SERVICE_NAME
     systemctl start $SERVICE_NAME
     
-    # Setup nginx reverse proxy
+    # Setup nginx reverse proxy (only if not already configured)
     echo "🌐 Setting up nginx..."
-    cat > /etc/nginx/sites-available/$SERVICE_NAME << 'NGINX_EOF'
+    if [ ! -f "/etc/nginx/sites-available/$SERVICE_NAME" ]; then
+        cat > /etc/nginx/sites-available/$SERVICE_NAME << 'NGINX_EOF'
 server {
     listen 80;
     server_name your-domain.com;
@@ -137,9 +138,14 @@ server {
     }
 }
 NGINX_EOF
+    else
+        echo "✅ Nginx configuration already exists, preserving SSL setup"
+    fi
     
-    # Enable nginx site
-    ln -sf /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/
+    # Enable nginx site (only if not already enabled)
+    if [ ! -L "/etc/nginx/sites-enabled/$SERVICE_NAME" ]; then
+        ln -sf /etc/nginx/sites-available/$SERVICE_NAME /etc/nginx/sites-enabled/
+    fi
     nginx -t && systemctl reload nginx
     
     # Check service status
