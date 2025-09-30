@@ -132,7 +132,9 @@ class TodoApp {
             onDeleteCategory: this.handleDeleteCategory.bind(this),
             onRenameCategory: this.handleRenameCategory.bind(this)
         });
-        container.appendChild(categoryModal);
+        if (categoryModal) {
+            container.appendChild(categoryModal);
+        }
     }
 
     async handleLogin(email, password, isRegister = false) {
