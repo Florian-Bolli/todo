@@ -105,14 +105,12 @@ export class DragHandler {
                     // Mobile-specific drag start
                     this.isDragging = true;
                     this.dragIndex = idx;
-                    console.log('Mobile drag started - isDragging:', this.isDragging, 'dragIndex:', this.dragIndex);
 
                     // Add visual feedback to the parent todo item
                     const todoItem = e.target.closest('.todo');
                     if (todoItem) {
                         todoItem.classList.remove('long-press');
                         todoItem.classList.add('dragging');
-                        console.log('Added dragging class to todo item');
                     }
                 } catch (err) {
                     console.error('Touch drag start error:', err);
@@ -136,11 +134,9 @@ export class DragHandler {
 
                 const touch = e.touches[0];
                 if (touch) {
-                    console.log('Touch move - clientY:', touch.clientY, 'clientX:', touch.clientX);
 
                     // Get all todo elements
                     const todoElements = document.querySelectorAll('.todo');
-                    console.log('Found', todoElements.length, 'todo elements');
 
                     let targetIndex = -1;
                     let closestElement = null;
@@ -152,13 +148,10 @@ export class DragHandler {
                         const centerY = rect.top + (rect.height / 2);
                         const distance = Math.abs(touch.clientY - centerY);
 
-                        console.log(`Todo ${i}: rect.top=${rect.top}, rect.bottom=${rect.bottom}, centerY=${centerY}, distance=${distance}`);
-
                         // If touch is directly over this element, use it immediately
                         if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
                             targetIndex = i;
                             closestElement = todoElements[i];
-                            console.log('Touch is directly over todo', i);
                             break;
                         }
 
@@ -170,7 +163,6 @@ export class DragHandler {
                         }
                     }
 
-                    console.log('Selected target index:', targetIndex, 'minDistance:', minDistance);
 
                     // Only reorder if we've moved to a different position
                     if (targetIndex !== -1 &&
@@ -178,7 +170,6 @@ export class DragHandler {
                         targetIndex >= 0 &&
                         targetIndex < todoElements.length) {
 
-                        console.log('Reordering from', this.dragIndex, 'to', targetIndex);
 
                         // Add visual feedback for the target position
                         todoElements.forEach((el, index) => {

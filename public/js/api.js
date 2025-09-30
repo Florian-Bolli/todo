@@ -146,14 +146,14 @@ export const todosAPI = {
     async create(todo) {
         return apiRequest('/todos', {
             method: 'POST',
-            body: todo
+            body: JSON.stringify(todo)
         });
     },
 
     async update(id, updates) {
         return apiRequest(`/todos/${id}`, {
             method: 'PUT',
-            body: updates
+            body: JSON.stringify(updates)
         });
     },
 
@@ -175,6 +175,26 @@ export const todosAPI = {
 export const categoriesAPI = {
     async getAll() {
         return apiRequest('/categories');
+    },
+    
+    async create(category) {
+        return apiRequest('/categories', {
+            method: 'POST',
+            body: JSON.stringify(category)
+        });
+    },
+    
+    async update(id, updates) {
+        return apiRequest(`/categories/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates)
+        });
+    },
+    
+    async delete(id) {
+        return apiRequest(`/categories/${id}`, {
+            method: 'DELETE'
+        });
     }
 };
 

@@ -203,6 +203,7 @@ export function TodoItem({ todo, index, isEditing, isExpanded, categories, onTog
                                 className: 'field-select',
                                 value: todo.category_id || '',
                                 disabled: !categories || categories.length === 0,
+                                key: `category-select-${todo.id}-${categories?.length || 0}`,
                                 onChange: (ev) => {
                                     const value = ev.target.value;
                                     const cleanValue = value === '' ? null : parseInt(value);
@@ -234,7 +235,11 @@ export function TodoItem({ todo, index, isEditing, isExpanded, categories, onTog
                                 }).map(category => {
                                     // Handle both old format (string) and new format (object)
                                     const categoryObj = typeof category === 'string' ? { id: category, name: category } : category;
-                                    return e('option', { key: categoryObj.id, value: categoryObj.id }, categoryObj.name);
+                                    return e('option', { 
+                                        key: categoryObj.id, 
+                                        value: categoryObj.id,
+                                        selected: todo.category_id === categoryObj.id
+                                    }, categoryObj.name);
                                 })
                             )
                         ),
@@ -299,8 +304,50 @@ export function TodoItem({ todo, index, isEditing, isExpanded, categories, onTog
     return container;
 }
 
+// Category Filter Component
+export function CategoryFilter({ categories, selectedCategories, onToggleCategory, onSelectAll, onSelectOnly }) {
+    // Ensure selectedCategories is always a Set
+    const safeSelectedCategories = selectedCategories instanceof Set ? selectedCategories : new Set();
+    
+    const container = e('div', { className: 'category-filter' },
+        e('div', { className: 'category-filter-header' },
+            e('label', { className: 'category-filter-label' }, 'Filter by Category:')
+        ),
+        e('div', { className: 'category-filter-buttons' },
+            // All button
+            e('button', {
+                className: `category-filter-btn ${safeSelectedCategories.size === 0 ? 'active' : ''}`,
+                onClick: (event) => {
+                    event.stopPropagation();
+                    onSelectAll();
+                },
+                title: 'Show all categories'
+            }, 'All'),
+            // Individual category buttons
+            ...categories.map(category => {
+                const isSelected = safeSelectedCategories.has(category.id);
+                return e('button', {
+                    key: `category-${category.id}`,
+                    className: `category-filter-btn ${isSelected ? 'active' : ''}`,
+                    onClick: (event) => {
+                        event.stopPropagation();
+                        onToggleCategory(category.id);
+                    },
+                    onDoubleClick: (event) => {
+                        event.stopPropagation();
+                        onSelectOnly(category.id);
+                    },
+                    title: `Click to toggle, double-click to show only this category`
+                }, category.name);
+            })
+        )
+    );
+
+    return container;
+}
+
 // Filter Controls Component
-export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAgeChange }) {
+export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAgeChange, categories, selectedCategories, onToggleCategory, onSelectAll, onSelectOnly }) {
     const container = e('div', { className: 'filter-controls' },
         e('div', { className: 'filter-buttons' },
             e('button', {
@@ -320,6 +367,14 @@ export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAg
                 onClick: () => onFilterChange('done')
             }, 'Done')
         ),
+        // Category filter component
+        CategoryFilter({ 
+            categories, 
+            selectedCategories, 
+            onToggleCategory, 
+            onSelectAll, 
+            onSelectOnly 
+        }),
         e('div', { className: 'age-filter' },
             e('label', { for: 'age-filter' }, 'Show done items from last:'),
             e('select', {

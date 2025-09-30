@@ -3,18 +3,26 @@
 import { authAPI, todosAPI, categoriesAPI, getToken, setToken, flushQueue } from './api.js';
 import { Login, TodoItem, FilterControls, TodoInput, Status } from './components.js';
 import { DragHandler } from './drag-handler.js';
+import { store } from './store.js';
 
 class TodoApp {
     constructor() {
-        this.todos = [];
-        this.categories = [];
-        this.filter = 'separate'; // Default to separate view
-        this.editingTodo = null;
-        this.doneAgeFilter = 7; // Show done items from last 7 days by default
-        this.expandedTodos = new Set(); // Track which todos are expanded
         this.dragHandler = new DragHandler((fromIndex, toIndex) => {
             this.handleReorder(fromIndex, toIndex);
         });
+
+        // Subscribe to store changes
+        this.unsubscribe = store.subscribe((state) => {
+            this.render();
+            
+            // If categories just got loaded, update all expanded todos
+            if (state.categories.length > 0) {
+                this.updateAllExpandedTodos();
+            }
+        });
+
+        // Add click outside handler to collapse all todos
+        this.handleClickOutside = this.handleClickOutside.bind(this);
 
         this.init();
     }
@@ -26,10 +34,12 @@ class TodoApp {
             try {
                 // Test the token by making a simple API call
                 await todosAPI.getAll();
+                store.actions.setAuthenticated({ token });
                 this.showTodoApp();
             } catch (error) {
                 console.log('Token validation failed:', error.message);
                 setToken('');
+                store.actions.setUnauthenticated();
                 this.showLogin();
             }
         } else {
@@ -39,12 +49,15 @@ class TodoApp {
         // Flush offline queue when back online
         window.addEventListener('online', () => {
             flushQueue().then(() => {
-                this.load();
+                store.actions.syncWithServer();
             });
         });
     }
 
     showLogin() {
+        // Remove click outside listener
+        document.removeEventListener('click', this.handleClickOutside);
+        
         const container = document.getElementById('app');
         container.innerHTML = '';
         container.appendChild(Login({ onLogin: this.handleLogin.bind(this) }));
@@ -69,19 +82,29 @@ class TodoApp {
 
         this.renderTodoApp(todoApp);
         this.load();
+
+        // Add click outside listener for collapsing todos
+        document.addEventListener('click', this.handleClickOutside);
     }
 
     renderTodoApp(container) {
+        const state = store.getState();
+        
         // Add todo input
         const todoInput = TodoInput({ onAdd: this.handleAdd.bind(this) });
         container.appendChild(todoInput);
 
         // Add filter controls
         const filterControls = FilterControls({
-            filter: this.filter,
+            filter: state.filter,
             onFilterChange: this.handleFilterChange.bind(this),
-            doneAgeFilter: this.doneAgeFilter,
-            onDoneAgeChange: this.handleDoneAgeChange.bind(this)
+            doneAgeFilter: state.doneAgeFilter,
+            onDoneAgeChange: this.handleDoneAgeChange.bind(this),
+            categories: state.categories,
+            selectedCategories: state.selectedCategories,
+            onToggleCategory: this.handleToggleCategory.bind(this),
+            onSelectAll: this.handleSelectAllCategories.bind(this),
+            onSelectOnly: this.handleSelectOnlyCategory.bind(this)
         });
         container.appendChild(filterControls);
 
@@ -102,7 +125,8 @@ class TodoApp {
             if (isRegister) {
                 await authAPI.register(email, password);
             }
-            await authAPI.login(email, password);
+            const response = await authAPI.login(email, password);
+            store.actions.setAuthenticated({ email, token: response.token });
             this.showTodoApp();
         } catch (error) {
             throw error;
@@ -112,43 +136,28 @@ class TodoApp {
     async handleLogout() {
         try {
             await authAPI.logout();
-            setToken('');
-            this.showLogin();
         } catch (error) {
             console.error('Logout error:', error);
-            // Still clear token and show login even if logout fails
+        } finally {
             setToken('');
+            store.actions.setUnauthenticated();
+            this.cleanup();
             this.showLogin();
         }
     }
 
+    cleanup() {
+        // Remove event listeners
+        document.removeEventListener('click', this.handleClickOutside);
+    }
+
     async load() {
         try {
-            const status = document.getElementById('status');
-            if (status) status.textContent = 'Loading...';
-
-            console.log('Loading todos and categories...');
-            const todosResponse = await todosAPI.getAll();
-            const categoriesResponse = await categoriesAPI.getAll();
-
-            // Handle the response structure from the backend
-            this.todos = Array.isArray(todosResponse) ? todosResponse : todosResponse.todos || [];
-            this.categories = Array.isArray(categoriesResponse) ? categoriesResponse : categoriesResponse.categories || [];
-
-            console.log('Loaded todos:', this.todos);
-            console.log('Loaded categories:', this.categories);
-
-            this.render();
+            store.actions.setLoading(true);
+            await store.syncWithServer();
         } catch (error) {
-            const status = document.getElementById('status');
             console.error('Load error:', error);
-
-            // Only show offline message if it's actually a network error
-            if (error.message.includes('Offline') || !navigator.onLine) {
-                if (status) status.textContent = 'Offline - showing cached';
-            } else {
-                if (status) status.textContent = `Error: ${error.message}`;
-            }
+            store.actions.setError(error.message);
         }
     }
 
@@ -160,28 +169,25 @@ class TodoApp {
                 priority: 1,
                 done: false
             });
-            this.todos.push(newTodo);
-            this.render();
+            store.actions.addTodo(newTodo);
         } catch (error) {
             console.error('Add error:', error);
+            store.actions.setError(`Failed to add todo: ${error.message}`);
         }
     }
 
     async handleToggle(todo) {
         try {
             const updated = await todosAPI.update(todo.id, { done: !todo.done });
-            const index = this.todos.findIndex(t => t.id === todo.id);
-            if (index !== -1) {
-                this.todos[index] = updated;
-                this.render();
-            }
+            store.actions.updateTodo(todo.id, updated);
         } catch (error) {
             console.error('Toggle error:', error);
+            store.actions.setError(`Failed to toggle todo: ${error.message}`);
         }
     }
 
     handleEdit(todo) {
-        this.editingTodo = todo;
+        store.actions.setEditingTodo(todo);
         this.replaceTodoItem(todo);
         // Focus the input field after updating
         setTimeout(() => {
@@ -198,33 +204,28 @@ class TodoApp {
         try {
             if (newName.trim()) {
                 const updated = await todosAPI.update(todo.id, { name: newName.trim() });
-                const index = this.todos.findIndex(t => t.id === todo.id);
-                if (index !== -1) {
-                    this.todos[index] = updated;
-                }
+                store.actions.updateTodo(todo.id, updated);
             }
-            this.editingTodo = null;
+            store.actions.clearEditingTodo();
             // Update only the specific todo item instead of re-rendering the entire list
-            const latestTodo = this.todos.find(t => t.id === todo.id) || todo;
+            const latestTodo = store.getters.getTodoById(todo.id) || todo;
             this.replaceTodoItem(latestTodo);
         } catch (error) {
             console.error('Update error:', error);
+            store.actions.setError(`Failed to update todo: ${error.message}`);
         }
     }
 
     handleCancel(todo) {
-        this.editingTodo = null;
-        const latestTodo = this.todos.find(t => t.id === todo.id) || todo;
+        store.actions.clearEditingTodo();
+        const latestTodo = store.getters.getTodoById(todo.id) || todo;
         this.replaceTodoItem(latestTodo);
     }
 
     async handleNotesUpdate(todo, notes) {
         try {
             const updated = await todosAPI.update(todo.id, { notes });
-            const index = this.todos.findIndex(t => t.id === todo.id);
-            if (index !== -1) {
-                this.todos[index] = updated;
-            }
+            store.actions.updateTodo(todo.id, updated);
             // Update the specific todo item in the DOM
             const targetElement = document.querySelector(`[data-todo-id="${todo.id}"]`);
             if (targetElement) {
@@ -235,6 +236,7 @@ class TodoApp {
             }
         } catch (error) {
             console.error('Notes update error:', error);
+            store.actions.setError(`Failed to update notes: ${error.message}`);
         }
     }
 
@@ -242,33 +244,43 @@ class TodoApp {
         try {
             const updateData = { [field]: value };
             const updated = await todosAPI.update(todo.id, updateData);
-            const index = this.todos.findIndex(t => t.id === todo.id);
-            if (index !== -1) {
-                this.todos[index] = updated;
-            }
-            // Update the specific todo item in the DOM
-            const targetElement = document.querySelector(`[data-todo-id="${todo.id}"]`);
-            if (targetElement) {
-                // Add a small delay to ensure DOM is ready
-                setTimeout(() => {
-                    this.updateTodoFields(targetElement, updated);
-                }, 10);
+            
+            // Update store with the new data
+            store.actions.updateTodo(todo.id, updated);
+            
+            // For category updates, we need to be more careful about DOM updates
+            if (field === 'category_id') {
+                // Find the target element
+                const targetElement = document.querySelector(`[data-todo-id="${todo.id}"]`);
+                if (targetElement) {
+                    // Find the category select element
+                    const categorySelect = targetElement.querySelector('.field-row .field-select');
+                    if (categorySelect) {
+                        // Update the select value directly
+                        categorySelect.value = value || '';
+                    }
+                }
+            } else {
+                // For other fields, use the normal update process
+                const targetElement = document.querySelector(`[data-todo-id="${todo.id}"]`);
+                if (targetElement) {
+                    setTimeout(() => {
+                        this.updateTodoFields(targetElement, updated);
+                    }, 10);
+                }
             }
         } catch (error) {
             console.error('Field update error:', error);
+            store.actions.setError(`Failed to update field: ${error.message}`);
         }
     }
 
 
     handleToggleExpanded(todo) {
-        if (this.expandedTodos.has(todo.id)) {
-            this.expandedTodos.delete(todo.id);
-        } else {
-            this.expandedTodos.add(todo.id);
-        }
+        store.actions.toggleExpandedTodo(todo.id);
         // Only update the specific todo item instead of re-rendering the entire list
-        // Use the latest todo data from this.todos to ensure we have the most up-to-date state
-        const latestTodo = this.todos.find(t => t.id === todo.id) || todo;
+        // Use the latest todo data from store to ensure we have the most up-to-date state
+        const latestTodo = store.getters.getTodoById(todo.id) || todo;
         this.updateTodoItem(latestTodo);
     }
 
@@ -277,19 +289,21 @@ class TodoApp {
         const targetElement = document.querySelector(`[data-todo-id="${todo.id}"]`);
 
         if (targetElement) {
+            const state = store.getState();
             // Find the actual index in the todos array
-            const actualIndex = this.todos.findIndex(t => t.id === todo.id);
+            const actualIndex = state.todos.findIndex(t => t.id === todo.id);
             if (actualIndex === -1) return;
 
             // Create a new TodoItem component with the current state
-            const isEditing = this.editingTodo && this.editingTodo.id === todo.id;
-            const isExpanded = this.expandedTodos.has(todo.id);
+            const isEditing = state.editingTodo && state.editingTodo.id === todo.id;
+            const isExpanded = state.expandedTodos.has(todo.id);
 
             const newTodoElement = TodoItem({
                 todo,
                 index: actualIndex,
                 isEditing,
                 isExpanded,
+                categories: state.categories,
                 onToggle: this.handleToggle.bind(this),
                 onEdit: this.handleEdit.bind(this),
                 onUpdate: this.handleUpdate.bind(this),
@@ -318,8 +332,9 @@ class TodoApp {
         const targetElement = document.querySelector(`[data-todo-id="${todo.id}"]`);
 
         if (targetElement) {
-            const isExpanded = this.expandedTodos.has(todo.id);
-            const isEditing = this.editingTodo && this.editingTodo.id === todo.id;
+            const state = store.getState();
+            const isExpanded = state.expandedTodos.has(todo.id);
+            const isEditing = state.editingTodo && state.editingTodo.id === todo.id;
 
             // Update classes
             targetElement.classList.toggle('expanded', isExpanded);
@@ -369,12 +384,21 @@ class TodoApp {
             }
         }
 
-        // Update category input
-        const categoryInput = todoElement.querySelector('input[placeholder="Enter category..."]');
-        if (categoryInput) {
-            const newCategoryValue = todo.category || '';
-            if (categoryInput.value !== newCategoryValue) {
-                categoryInput.value = newCategoryValue;
+        // Update category select (first select element in field-row)
+        const categorySelect = todoElement.querySelector('.field-row .field-select');
+        if (categorySelect) {
+            const newCategoryValue = todo.category_id || '';
+            const currentValue = categorySelect.value;
+            
+            if (currentValue !== newCategoryValue.toString()) {
+                // Check if the option exists before setting
+                const optionExists = Array.from(categorySelect.options).some(option => 
+                    option.value === newCategoryValue.toString()
+                );
+                
+                if (optionExists || newCategoryValue === '') {
+                    categorySelect.value = newCategoryValue.toString();
+                }
             }
         }
 
@@ -387,12 +411,13 @@ class TodoApp {
             }
         }
 
-        // Update priority select
-        const prioritySelect = todoElement.querySelector('.field-select');
+        // Update priority select (second select element)
+        const prioritySelects = todoElement.querySelectorAll('.field-select');
+        const prioritySelect = prioritySelects[prioritySelects.length - 1]; // Last select is priority
         if (prioritySelect) {
             const newPriorityValue = todo.priority || 1;
             if (prioritySelect.value !== newPriorityValue.toString()) {
-                prioritySelect.value = newPriorityValue;
+                prioritySelect.value = newPriorityValue.toString();
             }
         }
     }
@@ -401,45 +426,49 @@ class TodoApp {
         try {
             const todoId = parseInt(todo.id);
             await todosAPI.delete(todoId);
-            this.todos = this.todos.filter(t => t.id !== todo.id);
-            this.render();
+            store.actions.removeTodo(todo.id);
         } catch (error) {
             console.error('Error deleting todo:', error);
-            alert('Failed to delete todo. Please try again.');
+            store.actions.setError('Failed to delete todo. Please try again.');
         }
     }
 
     handleFilterChange(filter) {
-        this.filter = filter;
-        this.render();
+        store.actions.setFilter(filter);
     }
 
     handleDoneAgeChange(days) {
-        this.doneAgeFilter = days;
-        this.render();
+        store.actions.setDoneAgeFilter(days);
+    }
+
+    handleToggleCategory(categoryId) {
+        store.actions.toggleCategoryFilter(categoryId);
+    }
+
+    handleSelectAllCategories() {
+        store.actions.selectAllCategories();
+    }
+
+    handleSelectOnlyCategory(categoryId) {
+        store.actions.selectOnlyCategory(categoryId);
     }
 
     async handleReorder(fromIndex, toIndex) {
         try {
-            console.log('handleReorder called:', fromIndex, 'to', toIndex);
-            console.log('Before reorder:', this.todos.map(t => ({ id: t.id, name: t.name })));
+            const currentTodos = store.getState().todos;
 
             // Update the local data immediately
-            this.todos = this.dragHandler.reorderItems(this.todos, fromIndex, toIndex);
-
-            console.log('After reorder:', this.todos.map(t => ({ id: t.id, name: t.name })));
-
-            // Re-render the entire list (fast and reliable)
-            this.render();
+            const newOrder = this.dragHandler.reorderItems(currentTodos, fromIndex, toIndex);
+            store.actions.reorderTodos(newOrder);
 
             // Save to server in background (works offline too via queue)
-            todosAPI.reorder(this.todos).catch(error => {
-                console.log('Background reorder queued for later (offline mode)');
+            todosAPI.reorder(newOrder).catch(error => {
                 // Don't revert - the change is already applied locally
                 // The offline queue will handle syncing when online
             });
         } catch (error) {
             console.error('Reorder error:', error);
+            store.actions.setError(`Failed to reorder todos: ${error.message}`);
         }
     }
 
@@ -448,7 +477,8 @@ class TodoApp {
     async finalizeReorder() {
         try {
             // Save the final order to server when drag ends
-            await todosAPI.reorder(this.todos);
+            const currentTodos = store.getState().todos;
+            await todosAPI.reorder(currentTodos);
         } catch (error) {
             console.error('Finalize reorder error:', error);
         }
@@ -456,45 +486,58 @@ class TodoApp {
 
     isDoneRecently(todo) {
         const now = new Date();
-        const cutoffDate = new Date(now.getTime() - (this.doneAgeFilter * 24 * 60 * 60 * 1000));
+        const state = store.getState();
+        const cutoffDate = new Date(now.getTime() - (state.doneAgeFilter * 24 * 60 * 60 * 1000));
         if (!todo.done || !todo.done_at) return false;
         const doneDate = new Date(todo.done_at);
         return doneDate >= cutoffDate;
     }
 
     getFilteredTodos() {
-        const now = new Date();
-        const cutoffDate = new Date(now.getTime() - (this.doneAgeFilter * 24 * 60 * 60 * 1000));
+        return store.getters.getFilteredTodos();
+    }
 
-        const isDoneRecently = (todo) => {
-            if (!todo.done || !todo.done_at) return false;
-            const doneDate = new Date(todo.done_at);
-            return doneDate >= cutoffDate;
-        };
-
-        switch (this.filter) {
-            case 'active':
-                return this.todos.filter(t => !t.done);
-            case 'done':
-                return this.todos.filter(t => t.done && isDoneRecently(t));
-            case 'separate':
-                const active = this.todos.filter(t => !t.done);
-                const done = this.todos.filter(t => t.done && isDoneRecently(t));
-                return [...active, ...done];
-            default:
-                return this.todos;
+    handleClickOutside(event) {
+        // Check if the click is outside of any todo item
+        const clickedTodo = event.target.closest('.todo');
+        
+        // If click is not on a todo item and there are expanded todos, collapse them all
+        if (!clickedTodo && store.getState().expandedTodos.size > 0) {
+            store.actions.clearExpandedTodos();
         }
     }
 
+    updateAllExpandedTodos() {
+        const state = store.getState();
+        
+        // Update all expanded todos to ensure their category selects show the correct values
+        state.expandedTodos.forEach(todoId => {
+            const todo = store.getters.getTodoById(todoId);
+            if (todo) {
+                const targetElement = document.querySelector(`[data-todo-id="${todoId}"]`);
+                if (targetElement) {
+                    this.updateTodoFields(targetElement, todo);
+                }
+            }
+        });
+    }
+
     render() {
+        const state = store.getState();
+        
         // Re-render filter controls to update active state
         const filterControlsContainer = document.querySelector('.filter-controls');
         if (filterControlsContainer) {
             const newFilterControls = FilterControls({
-                filter: this.filter,
+                filter: state.filter,
                 onFilterChange: this.handleFilterChange.bind(this),
-                doneAgeFilter: this.doneAgeFilter,
-                onDoneAgeChange: this.handleDoneAgeChange.bind(this)
+                doneAgeFilter: state.doneAgeFilter,
+                onDoneAgeChange: this.handleDoneAgeChange.bind(this),
+                categories: state.categories,
+                selectedCategories: state.selectedCategories,
+                onToggleCategory: this.handleToggleCategory.bind(this),
+                onSelectAll: this.handleSelectAllCategories.bind(this),
+                onSelectOnly: this.handleSelectOnlyCategory.bind(this)
             });
             filterControlsContainer.parentNode.replaceChild(newFilterControls, filterControlsContainer);
         }
@@ -508,17 +551,17 @@ class TodoApp {
         if (filteredTodos.length === 0) {
             const status = document.getElementById('status');
             if (status) {
-                status.textContent = this.filter === 'all' ? 'No todos yet' :
-                    this.filter === 'active' ? 'No active todos' :
-                        this.filter === 'done' ? 'No completed todos' : 'No todos';
+                status.textContent = state.filter === 'all' ? 'No todos yet' :
+                    state.filter === 'active' ? 'No active todos' :
+                        state.filter === 'done' ? 'No completed todos' : 'No todos';
             }
             return;
         }
 
-        if (this.filter === 'separate') {
+        if (state.filter === 'separate') {
             // Render separate view with sections
-            const active = this.todos.filter(t => !t.done);
-            const done = this.todos.filter(t => t.done && this.isDoneRecently(t));
+            const active = filteredTodos.filter(t => !t.done);
+            const done = filteredTodos.filter(t => t.done && this.isDoneRecently(t));
 
             // Active todos section
             if (active.length > 0) {
@@ -528,15 +571,15 @@ class TodoApp {
                 todoList.appendChild(activeTitle);
 
                 active.forEach((todo, index) => {
-                    const isEditing = this.editingTodo && this.editingTodo.id === todo.id;
+                    const isEditing = state.editingTodo && state.editingTodo.id === todo.id;
                     // Find the actual index in the full todos array
-                    const actualIndex = this.todos.findIndex(t => t.id === todo.id);
-                    console.log('Active todo:', todo.name, 'filtered index:', index, 'actual index:', actualIndex);
+                    const actualIndex = state.todos.findIndex(t => t.id === todo.id);
                     const todoElement = TodoItem({
                         todo,
                         index: actualIndex,
                         isEditing,
-                        isExpanded: this.expandedTodos.has(todo.id),
+                        isExpanded: state.expandedTodos.has(todo.id),
+                        categories: state.categories,
                         onToggle: this.handleToggle.bind(this),
                         onEdit: this.handleEdit.bind(this),
                         onUpdate: this.handleUpdate.bind(this),
@@ -576,15 +619,15 @@ class TodoApp {
                 todoList.appendChild(doneTitle);
 
                 done.forEach((todo, index) => {
-                    const isEditing = this.editingTodo && this.editingTodo.id === todo.id;
+                    const isEditing = state.editingTodo && state.editingTodo.id === todo.id;
                     // Find the actual index in the full todos array
-                    const actualIndex = this.todos.findIndex(t => t.id === todo.id);
-                    console.log('Done todo:', todo.name, 'filtered index:', index, 'actual index:', actualIndex);
+                    const actualIndex = state.todos.findIndex(t => t.id === todo.id);
                     const todoElement = TodoItem({
                         todo,
                         index: actualIndex,
                         isEditing,
-                        isExpanded: this.expandedTodos.has(todo.id),
+                        isExpanded: state.expandedTodos.has(todo.id),
+                        categories: state.categories,
                         onToggle: this.handleToggle.bind(this),
                         onEdit: this.handleEdit.bind(this),
                         onUpdate: this.handleUpdate.bind(this),
@@ -611,12 +654,13 @@ class TodoApp {
         } else {
             // Render normal view
             filteredTodos.forEach((todo, index) => {
-                const isEditing = this.editingTodo && this.editingTodo.id === todo.id;
+                const isEditing = state.editingTodo && state.editingTodo.id === todo.id;
                 const todoElement = TodoItem({
                     todo,
                     index,
                     isEditing,
-                    isExpanded: this.expandedTodos.has(todo.id),
+                    isExpanded: state.expandedTodos.has(todo.id),
+                    categories: state.categories,
                     onToggle: this.handleToggle.bind(this),
                     onEdit: this.handleEdit.bind(this),
                     onUpdate: this.handleUpdate.bind(this),
@@ -638,9 +682,11 @@ class TodoApp {
 
         const status = document.getElementById('status');
         if (status) {
-            const total = this.todos.length;
-            const done = this.todos.filter(t => t.done).length;
-            status.textContent = `${done}/${total} completed`;
+            const total = store.getters.getTotalTodosCount();
+            const done = store.getters.getDoneTodosCount();
+            const loading = state.loading ? ' (Loading...)' : '';
+            const error = state.error ? ` (${state.error})` : '';
+            status.textContent = `${done}/${total} completed${loading}${error}`;
         }
     }
 }

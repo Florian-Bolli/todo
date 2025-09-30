@@ -183,6 +183,59 @@ body {
     border-color: #3b82f6;
 }
 
+/* Category Filter */
+.category-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.category-filter-header {
+    display: flex;
+    align-items: center;
+}
+
+.category-filter-label {
+    font-size: 14px;
+    color: #9ca3af;
+    font-weight: 500;
+}
+
+.category-filter-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.category-filter-btn {
+    padding: 6px 12px;
+    background: #374151;
+    color: #d1d5db;
+    border: 1px solid #4b5563;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.category-filter-btn:hover {
+    background: #4b5563;
+    transform: translateY(-1px);
+}
+
+.category-filter-btn.active {
+    background: #10b981;
+    color: white;
+    border-color: #10b981;
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.category-filter-btn:active {
+    transform: translateY(0);
+}
+
 /* Todo List */
 .todo-list {
     display: flex;
