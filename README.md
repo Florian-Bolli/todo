@@ -130,6 +130,22 @@ Modify the JavaScript modules:
 - `public/js/drag-handler.js`: Drag & drop behavior
 - `public/js/api.js`: API communication
 
+## 🗄️ Database Admin Interface
+
+The project includes a web-based database admin interface for viewing and querying the production database.
+
+**Access:** https://admin.todo.florianbolli.ch
+
+### Deploy Database Admin
+
+```bash
+./deploy-db-admin.sh
+```
+
+See [DB-ADMIN-DEPLOYMENT.md](DB-ADMIN-DEPLOYMENT.md) for full setup instructions.
+
+⚠️ **Security Warning:** Always enable authentication before exposing to the internet!
+
 ## 🚀 Deployment
 
 ### Production Setup

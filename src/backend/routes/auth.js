@@ -60,6 +60,7 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
+        console.log('Login attempt for email:', email);
 
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password required' });
@@ -67,12 +68,21 @@ router.post('/login', async (req, res) => {
 
         // Find user
         const user = req.db.prepare('SELECT * FROM accounts WHERE email = ?').get(email);
+        console.log('User found:', user ? 'Yes' : 'No');
+        if (user) {
+            console.log('User ID:', user.id);
+            console.log('User email:', user.email);
+            console.log('Hash length:', user.password_hash ? user.password_hash.length : 'No hash');
+            console.log('Hash start:', user.password_hash ? user.password_hash.substring(0, 20) : 'No hash');
+        }
+
         if (!user) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         // Verify password
         const isValid = bcrypt.compareSync(password, user.password_hash);
+        console.log('Password valid:', isValid);
         if (!isValid) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }

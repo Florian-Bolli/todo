@@ -24,7 +24,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 app.set('JWT_SECRET', JWT_SECRET);
 
 // Database setup
-const db = new Database('data.db');
+const db = new Database('databases/production/todo-app.db');
 
 // Create tables
 db.exec(`
@@ -342,7 +342,7 @@ app.get('/api/db-stats', (req, res) => {
         const accounts = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
         const todos = db.prepare('SELECT COUNT(*) as count FROM todo_items').get().count;
         const categories = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
-        
+
         res.json({ accounts, todos, categories });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -384,12 +384,12 @@ app.get('/api/db-categories', (req, res) => {
 app.post('/api/db-query', (req, res) => {
     try {
         const { query } = req.body;
-        
+
         // Basic security check - only allow SELECT statements
         if (!query.trim().toLowerCase().startsWith('select')) {
             return res.status(400).json({ error: 'Only SELECT queries are allowed' });
         }
-        
+
         const result = db.prepare(query).all();
         res.json({ data: result });
     } catch (error) {

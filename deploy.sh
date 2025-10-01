@@ -2,6 +2,28 @@
 
 # Manual deployment script for ToDo App
 # Usage: ./deploy.sh [server_ip] [ssh_key_path]
+#
+# DATABASE ORGANIZATION:
+# =====================
+# Production Database: /opt/todo-app/databases/production/todo-app.db
+# Backup Directory:    /opt/todo-app/databases/backups/
+# Database Manager:    ./database-manager.sh
+#
+# IMPORTANT DATABASE NOTES:
+# - The production database is located at: databases/production/todo-app.db
+# - Backups are automatically created with timestamp: todo-app-backup-YYYYMMDD-HHMMSS.db
+# - Use ./database-manager.sh backup to create manual backups
+# - Use ./database-manager.sh status to check database status
+# - Use ./database-manager.sh restore <file> to restore from backup
+# - Old backup directories are automatically cleaned up during deployment
+#
+# DEPLOYMENT PROCESS:
+# 1. Creates backup of current deployment
+# 2. Extracts new code to /opt/todo-app/current/
+# 3. Installs dependencies
+# 4. Sets up systemd service (runs src/backend/server.js)
+# 5. Configures nginx reverse proxy
+# 6. Starts the service
 
 set -e
 
@@ -70,9 +92,20 @@ ssh -i "$SSH_KEY" root@$SERVER_IP << EOF
     # Stop service if running
     systemctl stop $SERVICE_NAME || true
     
-    # Backup current deployment
+    # Setup database directory structure
+    echo "🗄️  Setting up database structure..."
+    mkdir -p databases/production databases/backups
+    
+    # Backup current deployment and database
     if [ -d "current" ]; then
         mv current backup-\$(date +%Y%m%d-%H%M%S)
+    fi
+    
+    # Create database backup if production database exists
+    if [ -f "databases/production/todo-app.db" ]; then
+        echo "📦 Creating database backup..."
+        cp databases/production/todo-app.db databases/backups/todo-app-backup-\$(date +%Y%m%d-%H%M%S).db
+        echo "✅ Database backed up"
     fi
     
     # Extract new deployment
@@ -89,6 +122,11 @@ ssh -i "$SSH_KEY" root@$SERVER_IP << EOF
     chmod +x server.js
     chown -R www-data:www-data $APP_DIR
     
+    # Copy database manager script
+    echo "📋 Installing database manager..."
+    cp database-manager.sh $APP_DIR/
+    chmod +x $APP_DIR/database-manager.sh
+    
     # Create systemd service
     echo "⚙️  Setting up systemd service..."
     cat > /etc/systemd/system/$SERVICE_NAME.service << 'SERVICE_EOF'
@@ -100,7 +138,7 @@ After=network.target
 Type=simple
 User=www-data
 WorkingDirectory=$APP_DIR/current
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node src/backend/server.js
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
@@ -148,12 +186,31 @@ NGINX_EOF
     fi
     nginx -t && systemctl reload nginx
     
+    # Clean up old database structure
+    echo "🧹 Cleaning up old database structure..."
+    if [ -f "current/data.db" ]; then
+        rm -f current/data.db
+        echo "✅ Removed old data.db from current/"
+    fi
+    if [ -f "data/data.db" ]; then
+        rm -f data/data.db
+        echo "✅ Removed old data.db from data/"
+    fi
+    
+    # Clean up old backup directories (keep only last 5)
+    echo "🗑️  Cleaning up old backup directories..."
+    cd $APP_DIR
+    ls -dt backup-* 2>/dev/null | tail -n +6 | xargs -r rm -rf
+    echo "✅ Old backup directories cleaned up"
+    
     # Check service status
     echo "✅ Checking service status..."
     systemctl status $SERVICE_NAME --no-pager
     
     echo "🎉 Deployment completed successfully!"
     echo "🌐 Your app should be available at http://$SERVER_IP"
+    echo "🗄️  Database location: $APP_DIR/databases/production/todo-app.db"
+    echo "📋 Use './database-manager.sh status' to check database status"
 EOF
 
 # Cleanup

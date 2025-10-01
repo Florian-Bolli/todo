@@ -235,8 +235,8 @@ export function TodoItem({ todo, index, isEditing, isExpanded, categories, onTog
                                 }).map(category => {
                                     // Handle both old format (string) and new format (object)
                                     const categoryObj = typeof category === 'string' ? { id: category, name: category } : category;
-                                    return e('option', { 
-                                        key: categoryObj.id, 
+                                    return e('option', {
+                                        key: categoryObj.id,
                                         value: categoryObj.id,
                                         selected: todo.category_id === categoryObj.id
                                     }, categoryObj.name);
@@ -308,7 +308,7 @@ export function TodoItem({ todo, index, isEditing, isExpanded, categories, onTog
 export function CategoryFilter({ categories, selectedCategories, onToggleCategory, onSelectAll, onSelectOnly }) {
     // Ensure selectedCategories is always a Set
     const safeSelectedCategories = selectedCategories instanceof Set ? selectedCategories : new Set();
-    
+
     const container = e('div', { className: 'category-filter' },
         e('div', { className: 'category-filter-header' },
             e('label', { className: 'category-filter-label' }, 'Filter by Category:')
@@ -348,56 +348,99 @@ export function CategoryFilter({ categories, selectedCategories, onToggleCategor
 
 // Filter Controls Component
 export function FilterControls({ filter, onFilterChange, doneAgeFilter, onDoneAgeChange, categories, selectedCategories, onToggleCategory, onSelectAll, onSelectOnly, onManageCategories }) {
+    // Use a simple global state for dropdown
+    if (!window.filterDropdownOpen) {
+        window.filterDropdownOpen = false;
+    }
+
+    const toggleDropdown = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        window.filterDropdownOpen = !window.filterDropdownOpen;
+
+        // Toggle the dropdown content visibility
+        const dropdownContent = document.querySelector('.filter-dropdown-content');
+        const dropdownIcon = document.querySelector('.filter-dropdown-icon');
+        const dropdownBtn = document.querySelector('.filter-dropdown-btn');
+
+        if (dropdownContent) {
+            dropdownContent.classList.toggle('open', window.filterDropdownOpen);
+        }
+        if (dropdownIcon) {
+            dropdownIcon.classList.toggle('open', window.filterDropdownOpen);
+        }
+        // No need to manage borders dynamically anymore - handled by CSS
+    };
+
     const container = e('div', { className: 'filter-controls' },
-        e('div', { className: 'filter-buttons' },
-            e('button', {
-                className: `filter-btn ${filter === 'separate' ? 'active' : ''}`,
-                onClick: () => onFilterChange('separate')
-            }, 'Separate'),
-            e('button', {
-                className: `filter-btn ${filter === 'all' ? 'active' : ''}`,
-                onClick: () => onFilterChange('all')
-            }, 'All'),
-            e('button', {
-                className: `filter-btn ${filter === 'active' ? 'active' : ''}`,
-                onClick: () => onFilterChange('active')
-            }, 'Active'),
-            e('button', {
-                className: `filter-btn ${filter === 'done' ? 'active' : ''}`,
-                onClick: () => onFilterChange('done')
-            }, 'Done')
-        ),
-        // Category filter component
-        CategoryFilter({ 
-            categories, 
-            selectedCategories, 
-            onToggleCategory, 
-            onSelectAll, 
-            onSelectOnly 
-        }),
-        // Manage categories button
-        e('div', { className: 'manage-categories-section' },
-            e('button', {
-                className: 'manage-categories-btn',
-                onClick: onManageCategories,
-                title: 'Manage categories'
-            }, 'Manage Categories')
-        ),
-        e('div', { className: 'age-filter' },
-            e('label', { for: 'age-filter' }, 'Show done items from last:'),
-            e('select', {
-                id: 'age-filter',
-                value: doneAgeFilter,
-                onChange: (e) => onDoneAgeChange(parseInt(e.target.value))
+        // Unified dropdown container
+        e('div', { className: 'filter-dropdown-container' },
+            // Dropdown toggle button
+            e('div', { className: 'filter-dropdown-toggle' },
+                e('button', {
+                    className: 'filter-dropdown-btn',
+                    onClick: toggleDropdown,
+                    title: 'Filter options'
+                },
+                    e('span', { className: 'filter-dropdown-text' }, 'Filters'),
+                    e('span', { className: `filter-dropdown-icon ${window.filterDropdownOpen ? 'open' : ''}` }, '▼')
+                )
+            ),
+            // Dropdown content
+            e('div', {
+                className: `filter-dropdown-content ${window.filterDropdownOpen ? 'open' : ''}`
             },
-                e('option', { value: '1' }, '1 day'),
-                e('option', { value: '3' }, '3 days'),
-                e('option', { value: '7' }, '7 days'),
-                e('option', { value: '14' }, '14 days'),
-                e('option', { value: '30' }, '30 days'),
-                e('option', { value: '90' }, '90 days'),
-                e('option', { value: '365' }, '1 year'),
-                e('option', { value: '9999' }, 'All time')
+                e('div', { className: 'filter-buttons' },
+                    e('button', {
+                        className: `filter-btn ${filter === 'separate' ? 'active' : ''}`,
+                        onClick: () => onFilterChange('separate')
+                    }, 'Separate'),
+                    e('button', {
+                        className: `filter-btn ${filter === 'all' ? 'active' : ''}`,
+                        onClick: () => onFilterChange('all')
+                    }, 'All'),
+                    e('button', {
+                        className: `filter-btn ${filter === 'active' ? 'active' : ''}`,
+                        onClick: () => onFilterChange('active')
+                    }, 'Active'),
+                    e('button', {
+                        className: `filter-btn ${filter === 'done' ? 'active' : ''}`,
+                        onClick: () => onFilterChange('done')
+                    }, 'Done')
+                ),
+                // Category filter component
+                CategoryFilter({
+                    categories,
+                    selectedCategories,
+                    onToggleCategory,
+                    onSelectAll,
+                    onSelectOnly
+                }),
+                // Manage categories button
+                e('div', { className: 'manage-categories-section' },
+                    e('button', {
+                        className: 'manage-categories-btn',
+                        onClick: onManageCategories,
+                        title: 'Manage categories'
+                    }, 'Manage Categories')
+                ),
+                e('div', { className: 'age-filter' },
+                    e('label', { for: 'age-filter' }, 'Show done items from last:'),
+                    e('select', {
+                        id: 'age-filter',
+                        value: doneAgeFilter,
+                        onChange: (e) => onDoneAgeChange(parseInt(e.target.value))
+                    },
+                        e('option', { value: '1' }, '1 day'),
+                        e('option', { value: '3' }, '3 days'),
+                        e('option', { value: '7' }, '7 days'),
+                        e('option', { value: '14' }, '14 days'),
+                        e('option', { value: '30' }, '30 days'),
+                        e('option', { value: '90' }, '90 days'),
+                        e('option', { value: '365' }, '1 year'),
+                        e('option', { value: '9999' }, 'All time')
+                    )
+                )
             )
         )
     );

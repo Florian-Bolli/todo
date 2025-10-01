@@ -10,10 +10,39 @@ router.post('/test-categories', (req, res) => {
     res.json({ message: 'Test category created', name: req.body.name });
 });
 
-// POST categories route - right after existing POST routes
+// POST categories route - create new category
 router.post('/categories', (req, res) => {
-    console.log('POST /categories called with body:', req.body);
-    res.json({ message: 'Category created', name: req.body.name });
+    try {
+        const { name } = req.body;
+
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Category name is required' });
+        }
+
+        // Check if category already exists
+        const existing = req.db.prepare(`
+            SELECT id FROM categories 
+            WHERE account_id = ? AND name = ?
+        `).get(req.user.id, name.trim());
+
+        if (existing) {
+            return res.status(409).json({ error: 'Category already exists' });
+        }
+
+        // Create the category
+        const result = req.db.prepare(`
+            INSERT INTO categories (account_id, name) 
+            VALUES (?, ?)
+        `).run(req.user.id, name.trim());
+
+        res.status(201).json({
+            id: result.lastInsertRowid,
+            name: name.trim()
+        });
+    } catch (error) {
+        console.error('Create category error:', error);
+        res.status(500).json({ error: 'Failed to create category' });
+    }
 });
 
 // Get all todos for authenticated user
@@ -299,6 +328,92 @@ router.get('/categories', (req, res) => {
     } catch (error) {
         console.error('Get categories error:', error);
         res.status(500).json({ error: 'Failed to fetch categories' });
+    }
+});
+
+// PUT categories route - update category
+router.put('/categories/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Category name is required' });
+        }
+
+        // Verify category belongs to user
+        const category = req.db.prepare(`
+            SELECT * FROM categories 
+            WHERE id = ? AND account_id = ?
+        `).get(id, req.user.id);
+
+        if (!category) {
+            return res.status(404).json({ error: 'Category not found' });
+        }
+
+        // Check if new name already exists (excluding current category)
+        const existing = req.db.prepare(`
+            SELECT id FROM categories 
+            WHERE account_id = ? AND name = ? AND id != ?
+        `).get(req.user.id, name.trim(), id);
+
+        if (existing) {
+            return res.status(409).json({ error: 'Category name already exists' });
+        }
+
+        // Update the category
+        req.db.prepare(`
+            UPDATE categories 
+            SET name = ? 
+            WHERE id = ? AND account_id = ?
+        `).run(name.trim(), id, req.user.id);
+
+        res.json({
+            id: parseInt(id),
+            name: name.trim()
+        });
+    } catch (error) {
+        console.error('Update category error:', error);
+        res.status(500).json({ error: 'Failed to update category' });
+    }
+});
+
+// DELETE categories route - delete category
+router.delete('/categories/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Verify category belongs to user
+        const category = req.db.prepare(`
+            SELECT * FROM categories 
+            WHERE id = ? AND account_id = ?
+        `).get(id, req.user.id);
+
+        if (!category) {
+            return res.status(404).json({ error: 'Category not found' });
+        }
+
+        // Remove category from all todos that use it
+        req.db.prepare(`
+            UPDATE todo_items 
+            SET category_id = NULL 
+            WHERE category_id = ? AND account_id = ?
+        `).run(id, req.user.id);
+
+        // Delete the category
+        const result = req.db.prepare(`
+            DELETE FROM categories 
+            WHERE id = ? AND account_id = ?
+        `).run(id, req.user.id);
+
+        if (result.changes === 0) {
+            return res.status(404).json({ error: 'Category not found' });
+        }
+
+        res.status(204).send();
+    } catch (error) {
+        console.error('Delete category error:', error);
+        res.status(500).json({ error: 'Failed to delete category' });
     }
 });
 

@@ -17,7 +17,7 @@ class TodoApp {
         // Subscribe to store changes
         this.unsubscribe = store.subscribe((state) => {
             this.render();
-            
+
             // If categories just got loaded, update all expanded todos
             if (state.categories.length > 0) {
                 this.updateAllExpandedTodos();
@@ -60,7 +60,7 @@ class TodoApp {
     showLogin() {
         // Remove click outside listener
         document.removeEventListener('click', this.handleClickOutside);
-        
+
         const container = document.getElementById('app');
         container.innerHTML = '';
         container.appendChild(Login({ onLogin: this.handleLogin.bind(this) }));
@@ -92,7 +92,7 @@ class TodoApp {
 
     renderTodoApp(container) {
         const state = store.getState();
-        
+
         // Add todo input
         const todoInput = TodoInput({ onAdd: this.handleAdd.bind(this) });
         container.appendChild(todoInput);
@@ -123,18 +123,6 @@ class TodoApp {
         status.id = 'status';
         container.appendChild(status);
 
-        // Add category modal
-        const categoryModal = CategoryModal({
-            isOpen: this.categoryModalOpen,
-            categories: state.categories,
-            onClose: this.handleCloseCategoryModal.bind(this),
-            onAddCategory: this.handleAddCategory.bind(this),
-            onDeleteCategory: this.handleDeleteCategory.bind(this),
-            onRenameCategory: this.handleRenameCategory.bind(this)
-        });
-        if (categoryModal) {
-            container.appendChild(categoryModal);
-        }
     }
 
     async handleLogin(email, password, isRegister = false) {
@@ -261,10 +249,10 @@ class TodoApp {
         try {
             const updateData = { [field]: value };
             const updated = await todosAPI.update(todo.id, updateData);
-            
+
             // Update store with the new data
             store.actions.updateTodo(todo.id, updated);
-            
+
             // For category updates, we need to be more careful about DOM updates
             if (field === 'category_id') {
                 // Find the target element
@@ -406,13 +394,13 @@ class TodoApp {
         if (categorySelect) {
             const newCategoryValue = todo.category_id || '';
             const currentValue = categorySelect.value;
-            
+
             if (currentValue !== newCategoryValue.toString()) {
                 // Check if the option exists before setting
-                const optionExists = Array.from(categorySelect.options).some(option => 
+                const optionExists = Array.from(categorySelect.options).some(option =>
                     option.value === newCategoryValue.toString()
                 );
-                
+
                 if (optionExists || newCategoryValue === '') {
                     categorySelect.value = newCategoryValue.toString();
                 }
@@ -489,11 +477,14 @@ class TodoApp {
         }
     }
 
-    async handleDeleteCategory(categoryId) {
+    async handleDeleteCategory(categoryName) {
         try {
-            await categoriesAPI.delete(categoryId);
-            const categories = store.getState().categories.filter(cat => cat.id !== categoryId);
-            store.actions.setCategories(categories);
+            const category = store.getState().categories.find(cat => cat.name === categoryName);
+            if (category) {
+                await categoriesAPI.delete(category.id);
+                const categories = store.getState().categories.filter(cat => cat.id !== category.id);
+                store.actions.setCategories(categories);
+            }
         } catch (error) {
             console.error('Failed to delete category:', error);
         }
@@ -504,7 +495,7 @@ class TodoApp {
             const category = store.getState().categories.find(cat => cat.name === oldName);
             if (category) {
                 await categoriesAPI.update(category.id, { name: newName });
-                const categories = store.getState().categories.map(cat => 
+                const categories = store.getState().categories.map(cat =>
                     cat.id === category.id ? { ...cat, name: newName } : cat
                 );
                 store.actions.setCategories(categories);
@@ -561,16 +552,34 @@ class TodoApp {
     handleClickOutside(event) {
         // Check if the click is outside of any todo item
         const clickedTodo = event.target.closest('.todo');
-        
+
         // If click is not on a todo item and there are expanded todos, collapse them all
         if (!clickedTodo && store.getState().expandedTodos.size > 0) {
             store.actions.clearExpandedTodos();
         }
+
+        // Check if click is outside of filter dropdown
+        const clickedFilter = event.target.closest('.filter-controls');
+        if (!clickedFilter && window.filterDropdownOpen) {
+            window.filterDropdownOpen = false;
+            const dropdownContent = document.querySelector('.filter-dropdown-content');
+            const dropdownIcon = document.querySelector('.filter-dropdown-icon');
+            const dropdownBtn = document.querySelector('.filter-dropdown-btn');
+
+            if (dropdownContent) {
+                dropdownContent.classList.remove('open');
+            }
+            if (dropdownIcon) {
+                dropdownIcon.classList.remove('open');
+            }
+            // No need to manage borders dynamically anymore - handled by CSS
+        }
     }
+
 
     updateAllExpandedTodos() {
         const state = store.getState();
-        
+
         // Update all expanded todos to ensure their category selects show the correct values
         state.expandedTodos.forEach(todoId => {
             const todo = store.getters.getTodoById(todoId);
@@ -585,7 +594,7 @@ class TodoApp {
 
     render() {
         const state = store.getState();
-        
+
         // Re-render filter controls to update active state
         const filterControlsContainer = document.querySelector('.filter-controls');
         if (filterControlsContainer) {
@@ -598,7 +607,8 @@ class TodoApp {
                 selectedCategories: state.selectedCategories,
                 onToggleCategory: this.handleToggleCategory.bind(this),
                 onSelectAll: this.handleSelectAllCategories.bind(this),
-                onSelectOnly: this.handleSelectOnlyCategory.bind(this)
+                onSelectOnly: this.handleSelectOnlyCategory.bind(this),
+                onManageCategories: this.handleManageCategories.bind(this)
             });
             filterControlsContainer.parentNode.replaceChild(newFilterControls, filterControlsContainer);
         }
@@ -748,6 +758,26 @@ class TodoApp {
             const loading = state.loading ? ' (Loading...)' : '';
             const error = state.error ? ` (${state.error})` : '';
             status.textContent = `${done}/${total} completed${loading}${error}`;
+        }
+
+        // Re-render category modal if it exists
+        const existingModal = document.querySelector('.modal-overlay');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        if (this.categoryModalOpen) {
+            const categoryModal = CategoryModal({
+                isOpen: this.categoryModalOpen,
+                categories: state.categories,
+                onClose: this.handleCloseCategoryModal.bind(this),
+                onAddCategory: this.handleAddCategory.bind(this),
+                onDeleteCategory: this.handleDeleteCategory.bind(this),
+                onRenameCategory: this.handleRenameCategory.bind(this)
+            });
+            if (categoryModal) {
+                document.body.appendChild(categoryModal);
+            }
         }
     }
 }

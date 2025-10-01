@@ -9,10 +9,16 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 8083;
-const db = new Database('data.db');
+
+// Use production database path if in production
+const DB_PATH = process.env.NODE_ENV === 'production' 
+    ? '/opt/todo-app/current/data.db' 
+    : 'data.db';
+
+const db = new Database(DB_PATH);
 
 app.use(express.json());
-app.use(express.static('public'));
+// Don't serve static files from public directory to avoid conflicts
 
 // Serve the admin interface
 app.get('/', (req, res) => {
@@ -97,27 +103,30 @@ app.get('/', (req, res) => {
     <script>
         async function loadData() {
             try {
+                // Detect if we're running under /admin path
+                const apiBase = window.location.pathname.startsWith('/admin') ? '/admin/api' : '/api';
+                
                 // Load stats
-                const statsResponse = await fetch('/api/stats');
+                const statsResponse = await fetch(apiBase + '/stats');
                 const stats = await statsResponse.json();
                 document.getElementById('total-accounts').textContent = stats.accounts;
                 document.getElementById('total-todos').textContent = stats.todos;
                 document.getElementById('total-categories').textContent = stats.categories;
 
                 // Load accounts
-                const accountsResponse = await fetch('/api/accounts');
+                const accountsResponse = await fetch(apiBase + '/accounts');
                 const accounts = await accountsResponse.json();
                 document.getElementById('accounts-content').innerHTML = createTable(accounts, ['id', 'email', 'created_at']);
 
                 // Load todos
-                const todosResponse = await fetch('/api/todos');
+                const todosResponse = await fetch(apiBase + '/todos');
                 const todos = await todosResponse.json();
                 document.getElementById('todos-content').innerHTML = createTable(todos, ['id', 'name', 'done', 'category', 'created_at']);
 
                 // Load categories
-                const categoriesResponse = await fetch('/api/categories');
+                const categoriesResponse = await fetch(apiBase + '/categories');
                 const categories = await categoriesResponse.json();
-                document.getElementById('categories-content').innerHTML = createTable(categories, ['id', 'name', 'account_id']);
+                document.getElementById('categories-content').innerHTML = createTable(categories, ['name', 'count']);
 
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -129,7 +138,7 @@ app.get('/', (req, res) => {
             
             let html = '<table><thead><tr>';
             columns.forEach(col => {
-                html += `<th>${col}</th>`;
+                html += '<th>' + col + '</th>';
             });
             html += '</tr></thead><tbody>';
             
@@ -137,7 +146,7 @@ app.get('/', (req, res) => {
                 html += '<tr>';
                 columns.forEach(col => {
                     const value = row[col];
-                    html += `<td>${value !== null && value !== undefined ? value : '-'}</td>`;
+                    html += '<td>' + (value !== null && value !== undefined ? value : '-') + '</td>';
                 });
                 html += '</tr>';
             });
@@ -149,9 +158,10 @@ app.get('/', (req, res) => {
         async function executeQuery() {
             const query = document.getElementById('sql-query').value;
             const resultDiv = document.getElementById('query-result');
+            const apiBase = window.location.pathname.startsWith('/admin') ? '/admin/api' : '/api';
             
             try {
-                const response = await fetch('/api/query', {
+                const response = await fetch(apiBase + '/query', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
@@ -160,12 +170,12 @@ app.get('/', (req, res) => {
                 const result = await response.json();
                 
                 if (result.error) {
-                    resultDiv.innerHTML = `<div class="error">Error: ${result.error}</div>`;
+                    resultDiv.innerHTML = '<div class="error">Error: ' + result.error + '</div>';
                 } else {
-                    resultDiv.innerHTML = `<div class="success">Query executed successfully!</div>` + createTable(result.data, Object.keys(result.data[0] || {}));
+                    resultDiv.innerHTML = '<div class="success">Query executed successfully!</div>' + createTable(result.data, Object.keys(result.data[0] || {}));
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                resultDiv.innerHTML = '<div class="error">Error: ' + error.message + '</div>';
             }
         }
 
@@ -182,7 +192,7 @@ app.get('/api/stats', (req, res) => {
     try {
         const accounts = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
         const todos = db.prepare('SELECT COUNT(*) as count FROM todo_items').get().count;
-        const categories = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
+        const categories = db.prepare("SELECT COUNT(DISTINCT category) as count FROM todo_items WHERE category != ''").get().count;
         
         res.json({ accounts, todos, categories });
     } catch (error) {
@@ -202,10 +212,9 @@ app.get('/api/accounts', (req, res) => {
 app.get('/api/todos', (req, res) => {
     try {
         const todos = db.prepare(`
-            SELECT t.id, t.name, t.done, c.name as category, t.created_at
-            FROM todo_items t
-            LEFT JOIN categories c ON t.category_id = c.id
-            ORDER BY t.created_at DESC LIMIT 50
+            SELECT id, name, done, category, created_at, account_id
+            FROM todo_items
+            ORDER BY created_at DESC LIMIT 50
         `).all();
         res.json(todos);
     } catch (error) {
@@ -215,7 +224,13 @@ app.get('/api/todos', (req, res) => {
 
 app.get('/api/categories', (req, res) => {
     try {
-        const categories = db.prepare('SELECT id, name, account_id FROM categories ORDER BY name').all();
+        const categories = db.prepare(`
+            SELECT DISTINCT category as name, COUNT(*) as count
+            FROM todo_items
+            WHERE category != ''
+            GROUP BY category
+            ORDER BY category
+        `).all();
         res.json(categories);
     } catch (error) {
         res.status(500).json({ error: error.message });
